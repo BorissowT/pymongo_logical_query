@@ -1,16 +1,20 @@
 import unittest
 from unittest import skip
 
-from filtering_pkg.collection import ICollection
+from filtering_pkg.collection import Collection
 
 
 class AndTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.collection = ICollection()
+        self.collection = Collection()
 
     def test1(self):
         self.assertEqual(self.collection.find_one({"author": "Eliot"}),
             {"author": "Eliot", "title": "some", "rating": 54, "id": 1})
+
+    def test_plain_with_condition(self):
+        self.assertLess(30, self.collection.find_one({"rating": {"$gt":30}})
+                        .get("rating"))
 
     def test2(self):
         self.assertEqual(

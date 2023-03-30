@@ -21,17 +21,26 @@ data = [
 
 
 class IOperator(metaclass=ABCMeta):
+    """interface for logical operations
+    """
     @classmethod
     @abstractmethod
     def call_operator_specific_method_uncleaned(cls, lists):
+        """Logical operations are operations with lists. For example difference
+        or intersection"""
         pass
 
     @abstractmethod
     def validate(self):
+        """validate operation. Not implemented yet"""
         pass
 
 
 class BaseOperator(IOperator):
+    """base implementation of operators.
+
+    __filter_conditions_list: registered operators
+    """
     __filter_conditions_list: dict[str, ConditionFilterBase] = {
         "$eq": EqualConditionFilter,
         "$ne": NotEqualConditionFilter,
@@ -42,7 +51,13 @@ class BaseOperator(IOperator):
     }
 
     @classmethod
-    def exec(cls, body) -> list:
+    def execute(cls, body) -> list:
+        """entrypoint of every operator. Body can be whether a dictionary with
+        listed attributes to filter or a list with conditions
+
+        :param body: dict or list with attributes to filter
+        :return: a list with results
+        """
         # example of filter {"author": "Eliot", "title":"some_title"}
         if isinstance(body, dict):
             return cls.__execute_plain(body)
@@ -51,28 +66,52 @@ class BaseOperator(IOperator):
 
     @classmethod
     def __get_filter_class(cls, name: str) -> ConditionFilterBase:
+        """returns filter class by name to execute
+
+        :param name: name of filter
+        :return: a class derived from ConditionFilterBase
+        """
         return cls.__filter_conditions_list.get(name)
 
     @classmethod
-    def __remove_duplicates(cls, lists):
+    def __remove_duplicates(cls, lists: list[dict]) -> list:
+        """remove duplicates of dictionaries.
+
+        :param lists: list of dictionaries
+        :return: list without duplicates
+        """
         return [dict(t) for t in {tuple(d.items()) for d in lists}]
 
     @classmethod
-    def __call_operator_specific_method(cls, lists):
+    def __call_operator_specific_method(cls, lists: list[list]) -> list:
+        """
+
+        :param lists: all condition filters are executed and passed as lists
+        :return: resulted list
+        """
         result = cls.__remove_duplicates(
             cls.call_operator_specific_method_uncleaned(lists))
         return result
 
     @classmethod
-    def __exec_with_conditions_plain(cls, elem):
-        if not cls.__has_filter_condition(elem):
+    def __exec_with_conditions_plain(cls, body) -> list:
+        """first we execute all filter conditions and replace their declarations
+        with results. plain means there is no specific logical operation is 
+        specified.
+        
+        :param body: dictionary of attributes to filter
+        :return: list with results
+        """
+        # if there is no explicit declaration of condition filter, execute as
+        # equal ($eq)
+        if not cls.__has_filter_condition(body):
             filter_condition_key = "$eq"
-            filter_condition_value = list(elem.values())[0]
+            filter_condition_value = list(body.values())[0]
         else:
-            filter_condition_key = list(list(elem.values())[0].keys())[0]
-            filter_condition_value = list(list(elem.values())[0].values())[0]
+            filter_condition_key = list(list(body.values())[0].keys())[0]
+            filter_condition_value = list(list(body.values())[0].values())[0]
 
-        filtered_attribute = list(elem.keys())[0]
+        filtered_attribute = list(body.keys())[0]
         filter_class_type = cls.__get_filter_class(filter_condition_key)
         filter_class = filter_class_type(
             filtered_attribute,
@@ -82,7 +121,15 @@ class BaseOperator(IOperator):
         return result
 
     @classmethod
-    def __exec_with_conditions_nested(cls, filter_body):
+    def __exec_with_conditions_nested(cls, filter_body: list) -> list:
+        """execute all condition filters and replace them with result. resulted
+        list pass to operator function. Example:
+        [{'rating': {'$gt': 65}}, {'id': {'$eq': 10}}]
+
+
+        :param filter_body:
+        :return: resulted list
+        """
         condition_results = []
         for elem in filter_body:
             if not cls.__has_filter_condition(elem):
@@ -108,14 +155,13 @@ class BaseOperator(IOperator):
         return cls.__call_operator_specific_method(condition_results)
 
     @classmethod
-    def __exec_with_filter_conditions(cls, filter_body):
-        if isinstance(filter_body, dict):
-            return cls.__exec_with_conditions_plain(filter_body)
-        else:
-            return cls.__exec_with_conditions_nested(filter_body)
-
-    @classmethod
     def __has_filter_condition(cls, body) -> bool:
+        """checks recursively if there are any filter conditions. True if yes,
+        else False
+
+        :param body:
+        :return:
+        """
         if isinstance(body, dict):
             values = list(body.values())
             for elem in values:
@@ -130,23 +176,38 @@ class BaseOperator(IOperator):
             for elem in body:
                 if cls.__has_filter_condition(elem):
                     return True
+        return False
 
     @classmethod
-    def __execute_nested(cls, body):
+    def __execute_nested(cls, body: list) -> list:
+        """execute nested filters. Example:
+        [{'author': 'Eliot'}, {'title': 'some'}]
+        [{'rating': {'$gt': 65}}, {'id': {'$eq': 10}}]
+
+        :param body: list with filters
+        :return: resulted list
+        """
         if cls.__has_filter_condition(body):
             # [{key: {"$condition": value}}...]
-            return cls.__exec_with_filter_conditions(body)
+            return cls.__exec_with_conditions_nested(body)
         else:
             # [{key:value, key:value},{key:value, key:value}...]
-            return cls.__exec_without_conditions(body)
+            return cls.__exec_without_conditions_nested(body)
 
     @classmethod
-    def __exec_without_conditions(cls, body):
+    def __exec_without_conditions_nested(cls, body):
+        """execute nested filters without condition filters. Example:
+        [{'author': 'Eliot'}, {'title': 'some'}]
+
+        :param body:
+        :return:
+        """
         lists = []
         for elem in body:
             # if filters in body aren't executed yet
             if isinstance(elem, dict):
-                lists.append(cls.__execute_plain(elem))
+                # TODO here not sure if element is the same logical operator
+                lists.append(cls.execute(elem))
             # if filters in body already executed. -> concat results
             elif isinstance(elem, list):
                 lists.append(elem)
@@ -154,12 +215,18 @@ class BaseOperator(IOperator):
         return result
 
     @classmethod
-    def __execute_plain(cls, body):
-        # get elements which contain given attributes
+    def __execute_plain(cls, body: dict) -> list:
+        """get elements which contain given attributes. plain means there is
+         only one set to execute.
+
+        :param body: dict contains attributes to find
+        :return: result list
+        """
+        # here execute filter conditions
         if not cls.__has_filter_condition(body):
             return [elem for elem in data if body.items() <= elem.items()]
         else:
-            return cls.__exec_with_filter_conditions(body)
+            return cls.__exec_with_conditions_plain(body)
 
 
 class OrOperator(BaseOperator):
@@ -189,13 +256,16 @@ class AndOperator(BaseOperator):
 
     @staticmethod
     def __get_intersections(lists):
+        concat_list = []
+        amount_of_searched_duplicates = len(lists)
         result = []
         for elem in lists:
-            lists.remove(elem)
-            for dct in elem:
-                for elem in lists:
-                    if dct in elem:
-                        result.append(dct)
+            for d in elem:
+                concat_list.append(d)
+        for elem in concat_list:
+            if concat_list.count(elem) == amount_of_searched_duplicates:
+                result.append(elem)
+                concat_list = list(filter(lambda a: a != elem, concat_list))
         return result
 
 

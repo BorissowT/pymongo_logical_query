@@ -1,12 +1,12 @@
 import unittest
 from unittest import skip
 
-from filtering_pkg.collection import ICollection
+from filtering_pkg.collection import Collection
 
 
 class OrTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.collection = ICollection()
+        self.collection = Collection()
 
     def test_eq_1(self):
         self.assertEqual(
@@ -58,11 +58,12 @@ class OrTest(unittest.TestCase):
         )
 
     def test_ne_and_nested(self):
-        # not david and not eliot -> Papi!
+        # not david and not eliot and not papi2-> Papi!
         self.assertEqual(self.collection.find_one(
             {"$or": [
                 {"$and": [{"author": {"$ne": "David"}},
-                         {"author": {"$ne": "Eliot"}}]},
+                         {"author": {"$ne": "Eliot"}},
+                          {"author": {"$ne": "Papi2"}}]},
                 {"id": 100}
                 ]
             }

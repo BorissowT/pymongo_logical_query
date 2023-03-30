@@ -1,12 +1,12 @@
 import unittest
 from unittest import skip
 
-from filtering_pkg.collection import ICollection
+from filtering_pkg.collection import Collection
 
 
 class NotTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.collection = ICollection()
+        self.collection = Collection()
 
     def test_1(self):
         self.assertNotEqual(
