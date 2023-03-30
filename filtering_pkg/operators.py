@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Type
 
 from filtering_pkg.condition_filters import *
 
@@ -41,7 +42,7 @@ class BaseOperator(IOperator):
 
     __filter_conditions_list: registered operators
     """
-    __filter_conditions_list: dict[str, ConditionFilterBase] = {
+    _filter_conditions_list: dict[str, Type[ConditionFilterBase]] = {
         "$eq": EqualConditionFilter,
         "$ne": NotEqualConditionFilter,
         "$gt": GreaterThanConditionFilter,
@@ -60,21 +61,21 @@ class BaseOperator(IOperator):
         """
         # example of filter {"author": "Eliot", "title":"some_title"}
         if isinstance(body, dict):
-            return cls.__execute_plain(body)
+            return cls._execute_plain(body)
         else:
-            return cls.__execute_nested(body)
+            return cls._execute_nested(body)
 
     @classmethod
-    def __get_filter_class(cls, name: str) -> ConditionFilterBase:
+    def _get_filter_class(cls, name: str) -> Type[ConditionFilterBase]:
         """returns filter class by name to execute
 
         :param name: name of filter
         :return: a class derived from ConditionFilterBase
         """
-        return cls.__filter_conditions_list.get(name)
+        return cls._filter_conditions_list.get(name)
 
     @classmethod
-    def __remove_duplicates(cls, lists: list[dict]) -> list:
+    def _remove_duplicates(cls, lists: list[dict]) -> list:
         """remove duplicates of dictionaries.
 
         :param lists: list of dictionaries
@@ -83,18 +84,18 @@ class BaseOperator(IOperator):
         return [dict(t) for t in {tuple(d.items()) for d in lists}]
 
     @classmethod
-    def __call_operator_specific_method(cls, lists: list[list]) -> list:
+    def _call_operator_specific_method(cls, lists: list[list]) -> list:
         """
 
         :param lists: all condition filters are executed and passed as lists
         :return: resulted list
         """
-        result = cls.__remove_duplicates(
+        result = cls._remove_duplicates(
             cls.call_operator_specific_method_uncleaned(lists))
         return result
 
     @classmethod
-    def __exec_with_conditions_plain(cls, body) -> list:
+    def _exec_with_conditions_plain(cls, body) -> list:
         """first we execute all filter conditions and replace their declarations
         with results. plain means there is no specific logical operation is 
         specified.
@@ -104,7 +105,7 @@ class BaseOperator(IOperator):
         """
         # if there is no explicit declaration of condition filter, execute as
         # equal ($eq)
-        if not cls.__has_filter_condition(body):
+        if not cls._has_filter_condition(body):
             filter_condition_key = "$eq"
             filter_condition_value = list(body.values())[0]
         else:
@@ -112,7 +113,7 @@ class BaseOperator(IOperator):
             filter_condition_value = list(list(body.values())[0].values())[0]
 
         filtered_attribute = list(body.keys())[0]
-        filter_class_type = cls.__get_filter_class(filter_condition_key)
+        filter_class_type = cls._get_filter_class(filter_condition_key)
         filter_class = filter_class_type(
             filtered_attribute,
             filter_condition_value,
@@ -121,7 +122,7 @@ class BaseOperator(IOperator):
         return result
 
     @classmethod
-    def __exec_with_conditions_nested(cls, filter_body: list) -> list:
+    def _exec_with_conditions_nested(cls, filter_body: list) -> list:
         """execute all condition filters and replace them with result. resulted
         list pass to operator function. Example:
         [{'rating': {'$gt': 65}}, {'id': {'$eq': 10}}]
@@ -132,7 +133,7 @@ class BaseOperator(IOperator):
         """
         condition_results = []
         for elem in filter_body:
-            if not cls.__has_filter_condition(elem):
+            if not cls._has_filter_condition(elem):
                 filter_condition_key = "$eq"
                 filter_condition_value = list(elem.values())[0]
             else:
@@ -141,7 +142,7 @@ class BaseOperator(IOperator):
                     0]
 
             filtered_attribute = list(elem.keys())[0]
-            filter_class_type = cls.__get_filter_class(filter_condition_key)
+            filter_class_type = cls._get_filter_class(filter_condition_key)
             filter_class = filter_class_type(
                 filtered_attribute,
                 filter_condition_value,
@@ -152,10 +153,10 @@ class BaseOperator(IOperator):
                     data
                 ))
             )
-        return cls.__call_operator_specific_method(condition_results)
+        return cls._call_operator_specific_method(condition_results)
 
     @classmethod
-    def __has_filter_condition(cls, body) -> bool:
+    def _has_filter_condition(cls, body) -> bool:
         """checks recursively if there are any filter conditions. True if yes,
         else False
 
@@ -167,19 +168,19 @@ class BaseOperator(IOperator):
             for elem in values:
                 try:
                     keys = list(elem.keys())
-                    allowed_keys = list(cls.__filter_conditions_list.keys())
+                    allowed_keys = list(cls._filter_conditions_list.keys())
                     if set(keys) <= set(allowed_keys):
                         return True
                 except AttributeError:
                     continue
         else:
             for elem in body:
-                if cls.__has_filter_condition(elem):
+                if cls._has_filter_condition(elem):
                     return True
         return False
 
     @classmethod
-    def __execute_nested(cls, body: list) -> list:
+    def _execute_nested(cls, body: list) -> list:
         """execute nested filters. Example:
         [{'author': 'Eliot'}, {'title': 'some'}]
         [{'rating': {'$gt': 65}}, {'id': {'$eq': 10}}]
@@ -187,15 +188,15 @@ class BaseOperator(IOperator):
         :param body: list with filters
         :return: resulted list
         """
-        if cls.__has_filter_condition(body):
+        if cls._has_filter_condition(body):
             # [{key: {"$condition": value}}...]
-            return cls.__exec_with_conditions_nested(body)
+            return cls._exec_with_conditions_nested(body)
         else:
             # [{key:value, key:value},{key:value, key:value}...]
-            return cls.__exec_without_conditions_nested(body)
+            return cls._exec_without_conditions_nested(body)
 
     @classmethod
-    def __exec_without_conditions_nested(cls, body):
+    def _exec_without_conditions_nested(cls, body):
         """execute nested filters without condition filters. Example:
         [{'author': 'Eliot'}, {'title': 'some'}]
 
@@ -211,11 +212,11 @@ class BaseOperator(IOperator):
             # if filters in body already executed. -> concat results
             elif isinstance(elem, list):
                 lists.append(elem)
-        result = cls.__call_operator_specific_method(lists)
+        result = cls._call_operator_specific_method(lists)
         return result
 
     @classmethod
-    def __execute_plain(cls, body: dict) -> list:
+    def _execute_plain(cls, body: dict) -> list:
         """get elements which contain given attributes. plain means there is
          only one set to execute.
 
@@ -223,23 +224,23 @@ class BaseOperator(IOperator):
         :return: result list
         """
         # here execute filter conditions
-        if not cls.__has_filter_condition(body):
+        if not cls._has_filter_condition(body):
             return [elem for elem in data if body.items() <= elem.items()]
         else:
-            return cls.__exec_with_conditions_plain(body)
+            return cls._exec_with_conditions_plain(body)
 
 
 class OrOperator(BaseOperator):
 
     @classmethod
     def call_operator_specific_method_uncleaned(cls, lists):
-        return cls.__get_union(lists)
+        return cls._get_union(lists)
 
     def validate(self):
         pass
 
     @classmethod
-    def __get_union(cls, lists):
+    def _get_union(cls, lists):
         result = []
         for elem in lists:
             result = result + elem
@@ -249,13 +250,13 @@ class OrOperator(BaseOperator):
 class AndOperator(BaseOperator):
     @classmethod
     def call_operator_specific_method_uncleaned(cls, lists):
-        return cls.__get_intersections(lists)
+        return cls._get_intersections(lists)
 
     def validate(self):
         pass
 
     @staticmethod
-    def __get_intersections(lists):
+    def _get_intersections(lists):
         concat_list = []
         amount_of_searched_duplicates = len(lists)
         result = []
@@ -272,13 +273,13 @@ class AndOperator(BaseOperator):
 class NorOperator(BaseOperator):
     @classmethod
     def call_operator_specific_method_uncleaned(cls, lists):
-        return cls.__get_exclusion(lists)
+        return cls._get_exclusion(lists)
 
     def validate(self):
         pass
 
     @classmethod
-    def __get_exclusion(cls, lists):
+    def _get_exclusion(cls, lists):
         concat_elems_to_exclude = []
         for elem in lists:
             concat_elems_to_exclude = concat_elems_to_exclude + elem
